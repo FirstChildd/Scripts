@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Параметры
+SOURCE_DIR="/var/www/html/mediawiki"             # Директория MediaWiki
+BACKUP_DIR="/tmp/backup"                         # Локальная временная директория для бэкапов
+REMOTE_USER="highdatime"                         # Имя пользователя на удалённом сервере
+REMOTE_SERVER="10.10.0.13"                       # IP-адрес или доменное имя удалённого сервера
+REMOTE_BACKUP_DIR="/var/backups/mediawiki/files" # Директория на удалённом сервере
+RETENTION_DAYS=7                                 # Срок хранения резервных копий (на удалённом сервере)
+SSH_KEY="/home/highdatime/vmopenssh"             # Путь к SSH-ключу
+
+# Выход при ошибке любой команды
+set -e
+
+# Очистка временных файлов при любом завершении
+trap 'rm -f "$BACKUP_FILE"; echo "Временные файлы удалены из $BACKUP_DIR"' EXIT
+
+# Проверка существования исходной директории
+if [ ! -d "$SOURCE_DIR" ]; then
+    echo "Ошибка: Исходная директория $SOURCE_DIR не существует."
+    exit 1
+fi
+
+# Создание временной директории для бэкапов
+mkdir -p "$BACKUP_DIR"
+
+# Создание архива с отметкой времени
+TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+BACKUP_FILE="$BACKUP_DIR/mediawiki_fs_backup_$TIMESTAMP.tar.gz"
+
+# Архивирование файлов
+echo "Начинаю резервное копирование файловой системы..."
+tar -czf "$BACKUP_FILE" -C "$(dirname "$SOURCE_DIR")" "$(basename "$SOURCE_DIR")"
+echo "Резервная копия создана локально: $BACKUP_FILE"
+
+# Убедиться, что целевая директория на удалённом сервере существует
+echo "Проверка и создание целевой директории на удалённом сервере..."
+ssh -i "$SSH_KEY" "$REMOTE_USER@$REMOTE_SERVER" "mkdir -p $REMOTE_BACKUP_DIR"
+
+# Передача резервной копии на удалённый сервер
+echo "Передача резервной копии на удалённый сервер..."
+if ! rsync -avz --progress -e "ssh -i $SSH_KEY" "$BACKUP_FILE" "$REMOTE_USER@$REMOTE_SERVER:$REMOTE_BACKUP_DIR"; then
+    echo "Ошибка передачи резервной копии. Проверьте подключение или доступ к директории."
+    exit 1
+fi
+echo "Резервная копия успешно передана на удалённый сервер."
+
+# Удаление старых резервных копий на удалённом сервере
+echo "Удаление старых резервных копий на удалённом сервере (старше $RETENTION_DAYS дней)..."
+ssh -i "$SSH_KEY" "$REMOTE_USER@$REMOTE_SERVER" "find $REMOTE_BACKUP_DIR -type f -name '*.tar.gz' -mtime +$RETENTION_DAYS -exec rm {} \;" || echo "Ошибка удаления старых резервных копий."
+echo "Старые резервные копии удалены с удалённого сервера."
+
+# Завершение
+echo "Резервное копирование файловой системы завершено."

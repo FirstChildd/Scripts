@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Параметры
+DB_NAME="my_wiki"                                # Имя базы данных
+DB_USER="wikiuser"                               # Пользователь базы данных
+BACKUP_DIR="/tmp/backup"                         # Локальная временная директория для бэкапов
+REMOTE_USER="highdatime"                         # Имя пользователя на удалённом сервере
+REMOTE_SERVER="10.10.0.13"                       # IP-адрес или доменное имя удалённого сервера
+REMOTE_BACKUP_DIR="/var/backups/mediawiki/db"   # Директория на удалённом сервере
+RETENTION_DAYS=7                                 # Срок хранения резервных копий (на удалённом сервере)
+SSH_KEY="/home/highdatime/vmopenssh"             # Путь к SSH-ключу
+
+# Выход при ошибке любой команды
+set -e
+
+# Проверка существования локальной директории для бэкапов
+mkdir -p "$BACKUP_DIR"
+
+# Создание дампа базы данных с отметкой времени
+TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+BACKUP_FILE="$BACKUP_DIR/postgres_db_backup_$TIMESTAMP.sql.gz"
+
+# Создание дампа и сжатие
+echo "Начинаю создание резервной копии базы данных..."
+pg_dump -U "$DB_USER" "$DB_NAME" | gzip > "$BACKUP_FILE"
+echo "Резервная копия базы данных создана локально: $BACKUP_FILE"
+
+# Передача резервной копии на удалённый сервер
+echo "Передача резервной копии на удалённый сервер..."
+rsync -avz --progress -e "ssh -i $SSH_KEY" "$BACKUP_FILE" "$REMOTE_USER@$REMOTE_SERVER:$REMOTE_BACKUP_DIR"
+
+# Проверка статуса передачи
+if [ $? -eq 0 ]; then
+    echo "Резервная копия успешно передана на удалённый сервер."
+else
+    echo "Ошибка передачи резервной копии. Проверьте подключение."
+    exit 1
+fi
+
+# Удаление временного файла резервной копии
+rm -f "$BACKUP_FILE"
+echo "Локальный временный файл резервной копии удалён."
+
+# Удаление старых резервных копий на удалённом сервере
+echo "Удаление старых резервных копий на удалённом сервере (старше $RETENTION_DAYS дней)..."
+ssh -i "$SSH_KEY" "$REMOTE_USER@$REMOTE_SERVER" "find $REMOTE_BACKUP_DIR -type f -name '*.sql.gz' -mtime +$RETENTION_DAYS -exec rm {} \;"
+echo "Старые резервные копии удалены с удалённого сервера."
+
+# Завершение
+echo "Резервное копирование базы данных завершено."
