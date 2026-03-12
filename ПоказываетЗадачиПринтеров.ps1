@@ -1,23 +1,3 @@
-<#
-.SYNOPSIS
-    Lists all print jobs
-.DESCRIPTION
-    This PowerShell script lists all print jobs of all printer devices.
-.EXAMPLE
-    PS> ./list-print-jobs.ps1
-
-    Printer                       Jobs
-    -------                       ----
-    ET-2810 Series                no jobs
-    ...
-.LINK
-    https://github.com/fleschutz/PowerShell
-.NOTES
-    Author: Markus Fleschutz | License: CC0
-#>
-
-#Requires -Version 4
-
 function ListPrintJobs {
     # Проверяем наличие модуля PrintManagement (есть во всех современных Windows)
     if (-not (Get-Module -ListAvailable -Name PrintManagement)) {
@@ -72,3 +52,4 @@ try {
     Read-Host "Press Enter to exit"
     exit 1
 }
+
