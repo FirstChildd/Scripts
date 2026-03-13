@@ -1,1 +1,1 @@
-.\Get-AdminActions.ps1 -UserName "aoveselov" -TrackFileOperations -TargetPaths "C:\Users\*"
+.\Get-AdminActions.ps1 -UserName "USERNAME" -TrackFileOperations -TargetPaths "C:\Users\*"
